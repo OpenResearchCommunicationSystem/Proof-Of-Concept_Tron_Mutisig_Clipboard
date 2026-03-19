@@ -1,0 +1,1031 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Tron Address Permissions Research Tool</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --background:#fff;--foreground:#171717;--muted:#f5f5f5;--muted-foreground:#737373;
+    --primary:#0066cc;--primary-foreground:#fff;--border:#e5e5e5;--card:#fafafa;--card-border:#e5e5e5;--radius:8px;
+    --font-sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  }
+  body{font-family:var(--font-sans);background:var(--background);color:var(--foreground);line-height:1.6;margin:0}
+  .container{max-width:900px;margin:0 auto;padding:40px 16px}
+  h1{font-size:22px;margin:0 0 6px;font-weight:600}
+  .subtitle{color:var(--muted-foreground);font-size:14px;margin-bottom:16px}
+  .card{background:var(--card);border:1px solid var(--card-border);border-radius:12px;padding:16px;margin-bottom:16px}
+  textarea,input[type="text"]{width:100%;border:1px solid var(--border);border-radius:var(--radius);padding:10px;font-size:14px;background:var(--background);color:var(--foreground);box-sizing:border-box}
+  textarea{min-height:160px}
+  .row{display:grid;grid-template-columns:1fr;gap:12px}
+  @media(min-width:768px){.row-2{grid-template-columns:1fr 1fr}}
+  .btn{display:inline-flex;align-items:center;gap:8px;height:40px;padding:0 16px;border-radius:var(--radius);border:1px solid var(--border);background:#fff;cursor:pointer;font-size:14px}
+  .btn-primary{background:var(--primary);color:var(--primary-foreground);border:none}
+  .btn-yes{background:#16a34a;color:#fff;border:none}
+  .btn-no{background:#dc2626;color:#fff;border:none}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .toggle{display:flex;border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  .toggle button{flex:1;padding:8px 12px;background:#fff;border:none;cursor:pointer;color:var(--muted-foreground);font-size:14px}
+  .toggle button.active{background:var(--primary);color:#fff}
+  .output{min-height:140px}
+  .list{list-style:disc;padding-left:20px;margin:0}
+  .footnotes{border-top:1px solid var(--border);margin-top:12px;padding-top:12px}
+  .toast{position:fixed;bottom:24px;right:24px;background:#171717;color:#fff;padding:10px 14px;border-radius:8px;opacity:0;transform:translateY(100px);transition:.3s;z-index:9999;max-width:360px}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .graph-row{display:flex;align-items:center;justify-content:center;gap:8px;margin:8px 0}
+  .graph-circle{width:28px;height:28px;border-radius:50%;border:2px solid var(--primary);color:var(--primary);display:flex;align-items:center;justify-content:center;font-weight:600;flex-shrink:0}
+  .graph-edge{flex:1;display:flex;flex-direction:column;align-items:center}
+  .graph-line{width:100%;height:2px;background:var(--primary)}
+  .graph-label{font-size:12px;color:var(--muted-foreground);text-align:center}
+  .inline{display:flex;align-items:center;gap:10px}
+
+  /* Activation prompt */
+  .activation-prompt{background:#fffbeb;border:1px solid #f59e0b;border-radius:12px;padding:16px;margin-bottom:16px;display:none}
+  .activation-prompt.show{display:block}
+  .activation-prompt h3{font-size:15px;font-weight:600;margin:0 0 6px;color:#92400e}
+  .activation-addr{font-family:monospace;font-size:13px;background:#fff;border:1px solid #fcd34d;border-radius:6px;padding:8px 10px;word-break:break-all;margin-bottom:12px;color:#374151}
+  .activation-btns{display:flex;gap:8px;flex-wrap:wrap}
+
+  /* Narrative view */
+  .narrative-def{background:#f0f9ff;border-left:3px solid var(--primary);padding:10px 14px;margin-bottom:18px;font-size:13px;color:#374151;line-height:1.6}
+  .narrative-section{margin-bottom:20px;padding:14px;background:#fff;border:1px solid var(--border);border-radius:8px}
+  .narrative-addr{font-family:monospace;font-size:13px;font-weight:700;color:var(--primary);margin-bottom:10px;word-break:break-all}
+  .narrative-sub{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--muted-foreground);margin:10px 0 4px}
+  .narrative-para{font-size:14px;line-height:1.7;margin:0 0 6px}
+  .narrative-list{list-style:none;padding:0;margin:4px 0 0 0}
+  .narrative-list li{font-size:13px;padding:4px 0 4px 12px;border-left:2px solid var(--border);margin-bottom:4px;word-break:break-all}
+  .narrative-list li.researched{border-left-color:#16a34a}
+  .narrative-list li.not-researched{border-left-color:#d1d5db}
+  .badge{display:inline-block;font-size:11px;padding:1px 6px;border-radius:4px;margin-left:6px;vertical-align:middle}
+  .badge-multisig{background:#dbeafe;color:#1e40af}
+  .badge-solo{background:#dcfce7;color:#166534}
+  .badge-inactive{background:#fee2e2;color:#991b1b}
+  .badge-researched{background:#d1fae5;color:#065f46}
+  .badge-lead{background:#fef3c7;color:#92400e}
+  .skipped-notice{font-size:13px;color:#6b7280;font-style:italic;margin-top:6px}
+</style>
+</head>
+<body>
+<div class="container">
+  <header>
+    <h1>Tron Address Permissions Research Tool</h1>
+    <p class="subtitle">Paste a TronScan "Owner permission" block to research an address. Builds a clipboard of relationships across multiple addresses, with deduplication and narrative output.</p>
+  </header>
+
+  <!-- Input -->
+  <div class="card">
+    <div class="row">
+      <label for="paste">Paste TronScan Owner Permission Block</label>
+      <textarea id="paste" placeholder="Permission Name:
+owner
+Threshold:
+2
+Authorized To:
+Address
+Weight
+TJSLZ5jErvsaXpv5Q5JnmXjAaF6YeX1BAG
+(Current Account)
+1
+TPqnu4Xtdr1Jf2RT1taac1CH1pTo7TbU2a
+1
+TM2wWqC6GV6mifY64VnWyDNq2AaPKEqB4x
+1"></textarea>
+    </div>
+    <div class="row row-2" style="margin-top:12px;">
+      <button id="parseBtn" class="btn btn-primary">Parse (Add to Clipboard)</button>
+      <button id="undoBtn" class="btn" disabled>Undo Last Add</button>
+      <button id="clearBtn" class="btn">Clear Clipboard</button>
+    </div>
+    <div class="inline" style="margin-top:10px;">
+      <label class="inline" for="persistToggle">
+        <input type="checkbox" id="persistToggle" checked>
+        Persist clipboard in this browser
+      </label>
+    </div>
+    <p class="subtitle" style="margin-top:6px;">
+      The <em>current account</em> address is auto‑detected (it is the subject being researched). All other addresses in the block are co‑signers. Duplicate (subject&nbsp;→&nbsp;co‑signer) pairs are skipped automatically. To re‑research an address already in the clipboard, use <strong>Undo Last Add</strong> or <strong>Clear Clipboard</strong> first.
+    </p>
+  </div>
+
+  <!-- Activation Prompt -->
+  <div class="activation-prompt" id="activationPrompt">
+    <h3>Sole Ownership Detected — Activation Check</h3>
+    <p style="font-size:14px;margin:0 0 8px;color:#78350f;">This address has no co-signers in the permission block, meaning it has sole ownership (no multi-signature). Before adding it to the clipboard, please confirm:</p>
+    <div class="activation-addr" id="activationAddr"></div>
+    <p style="font-size:14px;margin:0 0 10px;">Has this address been activated on the Tron network?</p>
+    <div class="activation-btns">
+      <button id="activationYes" class="btn btn-yes">Yes — Address is Activated</button>
+      <button id="activationNo" class="btn btn-no">No — Address Not Activated</button>
+    </div>
+  </div>
+
+  <!-- Input Preview -->
+  <div class="card">
+    <div class="toggle" id="inputToggle">
+      <button data-mode="table" class="active">Table</button>
+      <button data-mode="graph">Graph</button>
+    </div>
+    <div id="inputPreview" class="output" style="margin-top:12px;white-space:pre-wrap;color:#333;"></div>
+  </div>
+
+  <!-- Output -->
+  <div class="card">
+    <div class="toggle" id="viewToggle">
+      <button data-view="statements" class="active">Statements</button>
+      <button data-view="graph">Graph</button>
+      <button data-view="leads">Leads</button>
+      <button data-view="narrative">Narrative</button>
+    </div>
+
+    <div class="toggle" id="citeToggle" style="margin-top:8px;">
+      <button data-mode="none" class="active">No Cite</button>
+      <button data-mode="inline">In‑Text Cite</button>
+      <button data-mode="footnote">Footnote Cite</button>
+    </div>
+
+    <div id="statementsArea" class="output" style="margin-top:12px;">
+      <ul id="statementsList" class="list"></ul>
+      <div id="footnotes" class="footnotes" style="display:none;">
+        <strong>Footnotes</strong>
+        <ol id="footnotesList" style="margin:6px 0 0 18px;"></ol>
+      </div>
+      <div id="graphArea" style="display:none;"></div>
+      <div id="leadsArea" style="display:none;">
+        <ul id="leadsList" class="list"></ul>
+      </div>
+      <div id="narrativeArea" style="display:none;"></div>
+    </div>
+  </div>
+
+  <!-- Export -->
+  <div class="card">
+    <div id="clipboardMeta" class="subtitle" style="margin-bottom:8px;">
+      Clipboard: 0 entries
+    </div>
+    <div class="row row-2">
+      <button id="copyBtn" class="btn" disabled>Copy as Plain Text</button>
+      <button id="rtfBtn" class="btn btn-primary" disabled>Download RTF (Word)</button>
+      <button id="csvSingleBtn" class="btn" disabled>CSV (Single Table)</button>
+      <button id="csvNodeEdgeBtn" class="btn" disabled>CSV (Node/Edge)</button>
+      <button id="provBtn" class="btn" disabled>PROV‑O JSON‑LD</button>
+      <button id="walletsCsvBtn" class="btn" disabled>CSV (All Addresses Deduped)</button>
+      <button id="leadsCsvBtn" class="btn" disabled>CSV (Leads Deduped)</button>
+    </div>
+    <p class="subtitle" style="margin-top:10px;">RTF includes true Word footnotes. JSON‑LD uses W3C PROV‑O. All processing is local — no internet required.</p>
+  </div>
+</div>
+
+<div id="toast" class="toast"></div>
+
+<script>
+  // ─── State ────────────────────────────────────────────────────────────────
+  let parsed      = { subject: null, threshold: null, objects: [] };
+  let entries     = [];        // [{subject, predicate, object, source, weight, threshold}]
+  let addressMeta = {};        // {addr: {isMultiSig, isActivated, threshold, source}}
+  let batches     = [];        // [{entryCount, metaKeys}]  (metaKeys = newly added addresses)
+  let pendingParsed = null;    // sole-owner parse result awaiting activation answer
+  let citeMode    = "none";    // none | inline | footnote
+  let viewMode    = "statements"; // statements | graph | leads | narrative
+  let inputMode   = "table";   // table | graph
+
+  // ─── DOM Elements ─────────────────────────────────────────────────────────
+  const pasteEl          = document.getElementById('paste');
+  const parseBtn         = document.getElementById('parseBtn');
+  const undoBtn          = document.getElementById('undoBtn');
+  const clearBtn         = document.getElementById('clearBtn');
+  const persistToggle    = document.getElementById('persistToggle');
+  const activationPrompt = document.getElementById('activationPrompt');
+  const activationAddr   = document.getElementById('activationAddr');
+  const activationYes    = document.getElementById('activationYes');
+  const activationNo     = document.getElementById('activationNo');
+  const inputToggle      = document.getElementById('inputToggle');
+  const viewToggle       = document.getElementById('viewToggle');
+  const citeToggle       = document.getElementById('citeToggle');
+  const inputPreview     = document.getElementById('inputPreview');
+  const statementsList   = document.getElementById('statementsList');
+  const footnotesBox     = document.getElementById('footnotes');
+  const footnotesList    = document.getElementById('footnotesList');
+  const graphArea        = document.getElementById('graphArea');
+  const leadsArea        = document.getElementById('leadsArea');
+  const leadsList        = document.getElementById('leadsList');
+  const narrativeArea    = document.getElementById('narrativeArea');
+  const copyBtn          = document.getElementById('copyBtn');
+  const rtfBtn           = document.getElementById('rtfBtn');
+  const csvSingleBtn     = document.getElementById('csvSingleBtn');
+  const csvNodeEdgeBtn   = document.getElementById('csvNodeEdgeBtn');
+  const provBtn          = document.getElementById('provBtn');
+  const walletsCsvBtn    = document.getElementById('walletsCsvBtn');
+  const leadsCsvBtn      = document.getElementById('leadsCsvBtn');
+  const toastEl          = document.getElementById('toast');
+  const clipboardMeta    = document.getElementById('clipboardMeta');
+
+  // ─── LocalStorage Keys ────────────────────────────────────────────────────
+  const LS_ENTRIES  = 'tronOwnershipClipboardEntries';
+  const LS_BATCHES  = 'tronOwnershipClipboardBatches';
+  const LS_META     = 'tronOwnershipAddressMeta';
+  const LS_PERSIST  = 'tronOwnershipPersist';
+
+  // ─── Persistence ──────────────────────────────────────────────────────────
+  function saveClipboard(){
+    if(!persistToggle.checked) return;
+    localStorage.setItem(LS_ENTRIES, JSON.stringify(entries));
+    localStorage.setItem(LS_BATCHES, JSON.stringify(batches));
+    localStorage.setItem(LS_META, JSON.stringify(addressMeta));
+  }
+
+  function loadClipboard(){
+    const pv = localStorage.getItem(LS_PERSIST);
+    if(pv !== null) persistToggle.checked = (pv === 'true');
+    if(!persistToggle.checked) return;
+    try{ const e = localStorage.getItem(LS_ENTRIES); if(e) entries = JSON.parse(e)||[]; }catch{}
+    try{ const b = localStorage.getItem(LS_BATCHES); if(b){
+      const raw = JSON.parse(b)||[];
+      // Migrate old format (plain numbers) to new format {entryCount, metaKeys}
+      batches = raw.map(item => typeof item === 'number' ? {entryCount:item, metaKeys:[]} : item);
+    }}catch{}
+    try{ const m = localStorage.getItem(LS_META); if(m) addressMeta = JSON.parse(m)||{}; }catch{}
+    // Migrate old entries missing weight/threshold fields
+    entries = entries.map(e => {
+      if(e.weight === undefined){
+        const m = e.predicate && e.predicate.match(/Weight (\d+).*Threshold (\d+)/);
+        if(m){ e.weight = parseInt(m[1],10); e.threshold = parseInt(m[2],10); }
+        else { e.weight = null; e.threshold = null; }
+      }
+      return e;
+    });
+  }
+
+  persistToggle.addEventListener('change', ()=>{
+    localStorage.setItem(LS_PERSIST, persistToggle.checked ? 'true' : 'false');
+    if(!persistToggle.checked){
+      localStorage.removeItem(LS_ENTRIES);
+      localStorage.removeItem(LS_BATCHES);
+      localStorage.removeItem(LS_META);
+      showToast('Persistence disabled; clipboard will not be saved to browser.');
+    }else{
+      saveClipboard();
+      showToast('Persistence enabled; clipboard saved to browser.');
+    }
+  });
+
+  // ─── Utilities ────────────────────────────────────────────────────────────
+  function showToast(msg, isError=false){
+    toastEl.textContent = msg;
+    toastEl.style.background = isError ? '#dc2626' : '#171717';
+    toastEl.classList.add('show');
+    setTimeout(()=>toastEl.classList.remove('show'), 3000);
+  }
+
+  function todayLocalYYYYMMDD(){
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  function escapeRtf(text){
+    return String(text).replace(/\\/g,'\\\\').replace(/\{/g,'\\{').replace(/\}/g,'\\}');
+  }
+
+  function downloadFile(content, filename, mime){
+    const blob = new Blob([content], {type:mime});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  function escCSV(val){
+    const s = String(val);
+    if(s.includes('"')||s.includes(',')||s.includes('\n')) return `"${s.replace(/"/g,'""')}"`;
+    return s;
+  }
+
+  function renderClipboardMeta(){
+    const totalAddresses = Object.keys(addressMeta).length;
+    const totalEntries = entries.length;
+    let parts = [];
+    if(totalAddresses > 0) parts.push(`${totalAddresses} researched address${totalAddresses===1?'':'es'}`);
+    if(totalEntries > 0) parts.push(`${totalEntries} co-signer relationship${totalEntries===1?'':'s'}`);
+    clipboardMeta.textContent = parts.length ? `Clipboard: ${parts.join(', ')}` : 'Clipboard: empty';
+    undoBtn.disabled = batches.length === 0;
+  }
+
+  // Returns the set of all known addresses and leads
+  function computeSets(){
+    const subjects = new Set(Object.keys(addressMeta));
+    // Also include subjects from entries (in case old data exists without meta)
+    entries.forEach(e => subjects.add(e.subject));
+    const objects = new Set(entries.map(e => e.object));
+    const all = new Set([...subjects, ...objects]);
+    const leads = new Set([...objects].filter(x => !subjects.has(x)));
+    const sortAsc = arr => arr.slice().sort((a,b)=>a.localeCompare(b));
+    return {
+      subjects: sortAsc([...subjects]),
+      objects: sortAsc([...objects]),
+      all: sortAsc([...all]),
+      leads: sortAsc([...leads])
+    };
+  }
+
+  // ─── Parser ───────────────────────────────────────────────────────────────
+  function parseTronScanOwnerBlock(raw){
+    const lines = raw.split(/\r?\n/).map(l => l.trim());
+    let threshold = null;
+    let subject = null;
+    const objects = [];
+
+    // Pass 1: threshold (same line or next non-empty line)
+    for(let i=0;i<lines.length;i++){
+      if(/^Threshold:\s*$/i.test(lines[i]) || /^Threshold:\s*\d+/i.test(lines[i])){
+        const same = lines[i].match(/^Threshold:\s*(\d+)/i);
+        if(same){ threshold = parseInt(same[1],10); break; }
+        for(let j=i+1;j<lines.length;j++){
+          const next = lines[j];
+          if(!next) continue;
+          const m = next.match(/^(\d+)$/);
+          if(m) threshold = parseInt(m[1],10);
+          break;
+        }
+        if(threshold !== null) break;
+      }
+    }
+
+    // Pass 2: addresses and weights
+    const addrRe = /(T[a-zA-Z0-9]{33})/;
+    const intLineRe = /^\s*(\d+)\s*$/;
+
+    for(let i=0;i<lines.length;i++){
+      const line = lines[i];
+      const addrMatch = line.match(addrRe);
+      if(!addrMatch) continue;
+
+      const addr = addrMatch[1];
+
+      // Detect (Current Account) on same or next non-empty line
+      let isCurrent = /\(Current Account\)/.test(line);
+      if(!isCurrent){
+        for(let j=i+1;j<lines.length;j++){
+          const la = lines[j];
+          if(!la) continue;
+          if(/\(Current Account\)/.test(la)) isCurrent = true;
+          break;
+        }
+      }
+
+      if(isCurrent){ subject = addr; continue; }
+
+      // Capture weight for co-signers
+      let weight = null;
+      const tailInt = line.match(/(\d+)\s*$/);
+      if(tailInt){ weight = parseInt(tailInt[1],10); }
+      else {
+        for(let j=i+1;j<lines.length;j++){
+          const next = lines[j];
+          if(!next) continue;
+          const m = next.match(intLineRe);
+          if(m) weight = parseInt(m[1],10);
+          break;
+        }
+      }
+      if(weight !== null) objects.push({ address: addr, weight });
+    }
+
+    return { subject, threshold, objects };
+  }
+
+  // ─── Build / Commit ───────────────────────────────────────────────────────
+
+  // Check if a (subject, object) pair already exists in entries
+  function entryExists(subject, objectAddr){
+    return entries.some(e => e.subject === subject && e.object === objectAddr);
+  }
+
+  // Commit a multisig parse result — adds new entries and updates addressMeta
+  function commitMultiSig(p){
+    const sourceStr = `TronScan.IO on ${todayLocalYYYYMMDD()}`;
+    const T = p.threshold != null ? p.threshold : null;
+    const Tstr = T != null ? String(T) : '—';
+    let added = 0, skipped = 0;
+    const metaKeys = [];
+
+    p.objects.forEach(obj => {
+      if(entryExists(p.subject, obj.address)){
+        skipped++;
+      } else {
+        entries.push({
+          subject: p.subject,
+          predicate: `shares ownership with (Weight ${obj.weight}; Threshold ${Tstr})`,
+          object: obj.address,
+          source: sourceStr,
+          weight: obj.weight,
+          threshold: T
+        });
+        added++;
+      }
+    });
+
+    // Update addressMeta for the subject (only if not already recorded)
+    if(!addressMeta[p.subject]){
+      addressMeta[p.subject] = {
+        isMultiSig: true,
+        isActivated: true,
+        threshold: T,
+        source: sourceStr
+      };
+      metaKeys.push(p.subject);
+    }
+
+    // Only record a batch if something was actually added (so undo doesn't trigger on all-dupe parses)
+    if(added > 0 || metaKeys.length > 0){
+      batches.push({ entryCount: added, metaKeys });
+    }
+    return { added, skipped };
+  }
+
+  // Commit a sole-owner parse result with activation status provided by user
+  function commitSoleOwner(isActivated){
+    if(!pendingParsed) return;
+    const p = pendingParsed;
+    const sourceStr = `TronScan.IO on ${todayLocalYYYYMMDD()}`;
+    addressMeta[p.subject] = {
+      isMultiSig: false,
+      isActivated,
+      threshold: p.threshold,
+      source: sourceStr
+    };
+    batches.push({ entryCount: 0, metaKeys: [p.subject] });
+    pendingParsed = null;
+    activationPrompt.classList.remove('show');
+    parseBtn.disabled = false;
+    saveClipboard();
+    renderOutput();
+    showToast(isActivated
+      ? `Address recorded: sole owner, activated.`
+      : `Address recorded: sole owner, not activated.`
+    );
+  }
+
+  // ─── Input Preview Rendering ──────────────────────────────────────────────
+  function renderInputPreview(){
+    if(!parsed.subject && !parsed.objects.length){
+      inputPreview.textContent = 'Paste a TronScan owner permission block above and click Parse.';
+      return;
+    }
+    if(inputMode === 'table'){
+      const rows = [
+        `Subject (Current Account): ${parsed.subject || '—'}`,
+        `Threshold: ${parsed.threshold ?? '—'}`,
+        `Co-signers:`
+      ];
+      if(parsed.objects.length === 0) rows.push('  (none — sole ownership)');
+      parsed.objects.forEach(o => rows.push(`  ${o.address}   Weight ${o.weight}`));
+      inputPreview.textContent = rows.join('\n');
+    } else {
+      inputPreview.innerHTML = '';
+      if(parsed.objects.length === 0){
+        inputPreview.textContent = `Subject: ${parsed.subject || '—'} — sole ownership (no co-signers)`;
+        return;
+      }
+      parsed.objects.forEach(o => {
+        const div = document.createElement('div'); div.className='graph-row';
+        const s = document.createElement('div'); s.className='graph-circle'; s.textContent='S';
+        const sLabel = document.createElement('div'); sLabel.className='graph-label'; sLabel.textContent=parsed.subject||'S';
+        const left = document.createElement('div'); left.style.cssText='display:flex;flex-direction:column;align-items:center';
+        left.appendChild(s); left.appendChild(sLabel);
+
+        const edge = document.createElement('div'); edge.className='graph-edge';
+        const elabel = document.createElement('div'); elabel.className='graph-label';
+        elabel.textContent = `shares ownership (W ${o.weight}; Thr ${parsed.threshold ?? '—'})`;
+        const line = document.createElement('div'); line.className='graph-line';
+        edge.appendChild(elabel); edge.appendChild(line);
+
+        const oWrap = document.createElement('div'); oWrap.style.cssText='display:flex;flex-direction:column;align-items:center';
+        const oC = document.createElement('div'); oC.className='graph-circle'; oC.textContent='O';
+        const oLabel = document.createElement('div'); oLabel.className='graph-label'; oLabel.textContent=o.address;
+        oWrap.appendChild(oC); oWrap.appendChild(oLabel);
+
+        div.appendChild(left); div.appendChild(edge); div.appendChild(oWrap);
+        inputPreview.appendChild(div);
+      });
+    }
+  }
+
+  // ─── Narrative Rendering ──────────────────────────────────────────────────
+  function renderNarrative(){
+    narrativeArea.innerHTML = '';
+    const allSubjects = Object.keys(addressMeta).sort((a,b)=>a.localeCompare(b));
+
+    if(allSubjects.length === 0){
+      narrativeArea.innerHTML = '<p style="color:var(--muted-foreground);font-size:14px;">No researched addresses yet. Parse TronScan permission blocks to populate the narrative.</p>';
+      return;
+    }
+
+    // Terminology definition
+    const def = document.createElement('div');
+    def.className = 'narrative-def';
+    def.innerHTML = '<strong>Terminology:</strong> <em>Weight</em> is each co-signer\'s voting power on a given address. <em>Threshold</em> is the minimum combined weight required to authorize any action from that address. A group of co-signers must sign together such that their combined weight meets or exceeds the threshold.';
+    narrativeArea.appendChild(def);
+
+    allSubjects.forEach(addr => {
+      const meta = addressMeta[addr];
+      const section = document.createElement('div');
+      section.className = 'narrative-section';
+
+      // Address header
+      const addrDiv = document.createElement('div');
+      addrDiv.className = 'narrative-addr';
+      addrDiv.textContent = `Address: ${addr}`;
+      // Badge
+      let badgeHtml = '';
+      if(!meta.isActivated){
+        badgeHtml = '<span class="badge badge-inactive">Not Activated</span>';
+      } else if(meta.isMultiSig){
+        badgeHtml = '<span class="badge badge-multisig">Multi-Sig</span>';
+      } else {
+        badgeHtml = '<span class="badge badge-solo">Sole Owner</span>';
+      }
+      addrDiv.innerHTML = `Address: ${addr} ${badgeHtml}`;
+      section.appendChild(addrDiv);
+
+      // Section A: Own permissions
+      const subA = document.createElement('div');
+      subA.className = 'narrative-sub';
+      subA.textContent = 'Own Permissions';
+      section.appendChild(subA);
+
+      const paraA = document.createElement('div');
+      paraA.className = 'narrative-para';
+
+      if(!meta.isActivated){
+        paraA.textContent = `This address has not been activated on the Tron network. Unactivated addresses cannot hold multi-signature permissions.`;
+      } else if(!meta.isMultiSig){
+        paraA.textContent = `This address does not have shared ownership permissions — it is the sole authorized signer (no multi-signature required).`;
+      } else {
+        const signers = entries.filter(e => e.subject === addr);
+        const T = meta.threshold != null ? meta.threshold : '—';
+        const signerList = signers.map(e => `${e.object} (weight ${e.weight})`).join(', ');
+        if(signers.length === 0){
+          paraA.textContent = `This address has shared ownership permissions (multi-signature). Threshold: ${T}. Co-signers are not yet fully recorded in this session.`;
+        } else {
+          paraA.textContent = `This address has shared ownership permissions (multi-signature). To authorize any action, the combined weight of signing co-signers must reach the threshold of ${T}. Authorized co-signers: ${signerList}.`;
+        }
+      }
+      section.appendChild(paraA);
+
+      // Section B: Co-signer role on other addresses
+      const cosignerEntries = entries.filter(e => e.object === addr);
+      const subB = document.createElement('div');
+      subB.className = 'narrative-sub';
+      subB.textContent = 'Co-Signer Authority on Other Addresses';
+      section.appendChild(subB);
+
+      const paraB = document.createElement('div');
+      paraB.className = 'narrative-para';
+
+      if(cosignerEntries.length === 0){
+        paraB.textContent = `This address does not appear as a co-signer on any other researched address.`;
+        section.appendChild(paraB);
+      } else {
+        paraB.textContent = `This address holds co-signer authority on ${cosignerEntries.length} other researched address${cosignerEntries.length===1?'':'es'}:`;
+        section.appendChild(paraB);
+        const ul = document.createElement('ul');
+        ul.className = 'narrative-list';
+        cosignerEntries.forEach(e => {
+          const isResearched = !!addressMeta[e.subject];
+          const li = document.createElement('li');
+          li.className = isResearched ? 'researched' : 'not-researched';
+          const researchedBadge = isResearched
+            ? '<span class="badge badge-researched">Researched</span>'
+            : '<span class="badge badge-lead">Not Yet Researched</span>';
+          const T = e.threshold != null ? e.threshold : '—';
+          li.innerHTML = `${e.subject} — this address's weight: ${e.weight}, target threshold: ${T} ${researchedBadge}`;
+          ul.appendChild(li);
+        });
+        section.appendChild(ul);
+      }
+
+      // Source
+      const srcDiv = document.createElement('div');
+      srcDiv.style.cssText='font-size:12px;color:var(--muted-foreground);margin-top:8px;';
+      srcDiv.textContent = `Source: ${meta.source}`;
+      section.appendChild(srcDiv);
+
+      narrativeArea.appendChild(section);
+    });
+  }
+
+  // Convert narrative to plain text for copy/export
+  function narrativeToText(){
+    const allSubjects = Object.keys(addressMeta).sort((a,b)=>a.localeCompare(b));
+    if(allSubjects.length === 0) return '';
+
+    const lines = [
+      '=== TRON ADDRESS PERMISSIONS RESEARCH ===',
+      `Generated: ${todayLocalYYYYMMDD()}`,
+      '',
+      'Terminology: "Weight" is each co-signer\'s voting power. "Threshold" is the minimum combined weight required to authorize any action from that address.',
+      ''
+    ];
+
+    allSubjects.forEach(addr => {
+      const meta = addressMeta[addr];
+      lines.push(`${'─'.repeat(60)}`);
+      lines.push(`ADDRESS: ${addr}`);
+      lines.push(`${'─'.repeat(60)}`);
+      lines.push('');
+
+      lines.push('OWN PERMISSIONS:');
+      if(!meta.isActivated){
+        lines.push(`This address has not been activated on the Tron network. Unactivated addresses cannot hold multi-signature permissions.`);
+      } else if(!meta.isMultiSig){
+        lines.push(`This address does not have shared ownership permissions — it is the sole authorized signer (no multi-signature required).`);
+      } else {
+        const signers = entries.filter(e => e.subject === addr);
+        const T = meta.threshold != null ? meta.threshold : '—';
+        const signerList = signers.map(e => `${e.object} (weight ${e.weight})`).join(', ');
+        if(signers.length === 0){
+          lines.push(`This address has shared ownership permissions (multi-signature). Threshold: ${T}. Co-signers are not yet fully recorded in this session.`);
+        } else {
+          lines.push(`This address has shared ownership permissions (multi-signature). To authorize any action, the combined weight of signing co-signers must reach the threshold of ${T}. Authorized co-signers: ${signerList}.`);
+        }
+      }
+
+      lines.push('');
+      lines.push('CO-SIGNER AUTHORITY ON OTHER ADDRESSES:');
+      const cosignerEntries = entries.filter(e => e.object === addr);
+      if(cosignerEntries.length === 0){
+        lines.push(`This address does not appear as a co-signer on any other researched address.`);
+      } else {
+        lines.push(`This address holds co-signer authority on ${cosignerEntries.length} other address${cosignerEntries.length===1?'':'es'}:`);
+        cosignerEntries.forEach(e => {
+          const isResearched = !!addressMeta[e.subject];
+          const T = e.threshold != null ? e.threshold : '—';
+          const status = isResearched ? '[Researched]' : '[Not Yet Researched]';
+          lines.push(`  - ${e.subject} (this address's weight: ${e.weight}, threshold: ${T}) ${status}`);
+        });
+      }
+
+      lines.push(`Source: ${meta.source}`);
+      lines.push('');
+    });
+
+    return lines.join('\n');
+  }
+
+  // ─── Output Rendering ─────────────────────────────────────────────────────
+  function renderOutput(){
+    const hasEntries = entries.length > 0;
+    const hasMeta = Object.keys(addressMeta).length > 0;
+    const hasAny = hasEntries || hasMeta;
+    const leads = computeSets().leads;
+
+    // Button enablement
+    copyBtn.disabled = !hasAny || (viewMode === 'statements' && !hasEntries) || (viewMode === 'graph' && !hasEntries) || (viewMode === 'leads' && leads.length === 0);
+    if(viewMode === 'narrative') copyBtn.disabled = !hasMeta;
+    rtfBtn.disabled = !hasEntries || viewMode !== 'statements';
+    csvSingleBtn.disabled = !hasEntries;
+    csvNodeEdgeBtn.disabled = !hasEntries;
+    provBtn.disabled = !hasEntries;
+    walletsCsvBtn.disabled = !hasAny;
+    leadsCsvBtn.disabled = leads.length === 0;
+
+    // Hide all areas
+    statementsList.innerHTML = '';
+    graphArea.style.display = 'none';
+    leadsArea.style.display = 'none';
+    narrativeArea.style.display = 'none';
+    footnotesBox.style.display = 'none';
+    leadsList.innerHTML = '';
+    footnotesList.innerHTML = '';
+
+    if(!hasAny){
+      renderClipboardMeta();
+      return;
+    }
+
+    if(viewMode === 'statements'){
+      if(!hasEntries){
+        statementsList.innerHTML = '<li style="color:var(--muted-foreground);font-style:italic;list-style:none">No co-signer relationships yet. Sole-owner addresses appear in the Narrative view.</li>';
+      } else {
+        entries.forEach((e,i)=>{
+          const li = document.createElement('li');
+          const span = document.createElement('span');
+          span.textContent = `${e.subject} ${e.predicate} ${e.object}`;
+          if(citeMode === 'inline'){
+            span.textContent += ` (${e.source})`;
+          } else if(citeMode === 'footnote'){
+            const sup = document.createElement('sup'); sup.textContent = (i+1);
+            span.appendChild(sup);
+          }
+          li.appendChild(span);
+          statementsList.appendChild(li);
+        });
+        if(citeMode === 'footnote'){
+          footnotesBox.style.display = 'block';
+          entries.forEach(e => {
+            const li = document.createElement('li'); li.textContent = e.source;
+            footnotesList.appendChild(li);
+          });
+        }
+      }
+
+    } else if(viewMode === 'graph'){
+      graphArea.style.display = 'block';
+      graphArea.innerHTML = '';
+      entries.forEach(e => {
+        const row = document.createElement('div'); row.className='graph-row';
+        const s = document.createElement('div'); s.className='graph-circle'; s.textContent='S';
+        const sLabel = document.createElement('div'); sLabel.className='graph-label'; sLabel.textContent=e.subject;
+        const left = document.createElement('div'); left.style.cssText='display:flex;flex-direction:column;align-items:center';
+        left.appendChild(s); left.appendChild(sLabel);
+        const edge = document.createElement('div'); edge.className='graph-edge';
+        const elabel = document.createElement('div'); elabel.className='graph-label'; elabel.textContent=e.predicate;
+        const line = document.createElement('div'); line.className='graph-line';
+        edge.appendChild(elabel); edge.appendChild(line);
+        const oWrap = document.createElement('div'); oWrap.style.cssText='display:flex;flex-direction:column;align-items:center';
+        const oC = document.createElement('div'); oC.className='graph-circle'; oC.textContent='O';
+        const oLabel = document.createElement('div'); oLabel.className='graph-label'; oLabel.textContent=e.object;
+        oWrap.appendChild(oC); oWrap.appendChild(oLabel);
+        row.appendChild(left); row.appendChild(edge); row.appendChild(oWrap);
+        graphArea.appendChild(row);
+      });
+
+    } else if(viewMode === 'leads'){
+      leadsArea.style.display = 'block';
+      if(leads.length === 0){
+        leadsList.innerHTML = '<li style="list-style:none;color:var(--muted-foreground);font-style:italic">No unresearched co-signer addresses found.</li>';
+      } else {
+        leads.forEach(addr => {
+          const li = document.createElement('li'); li.textContent = addr;
+          leadsList.appendChild(li);
+        });
+      }
+
+    } else if(viewMode === 'narrative'){
+      narrativeArea.style.display = 'block';
+      renderNarrative();
+    }
+
+    renderClipboardMeta();
+  }
+
+  // ─── RTF Generation ───────────────────────────────────────────────────────
+  function generateRTF(){
+    let r = "{\\rtf1\\ansi\\deff0\n{\\fonttbl{\\f0\\fnil Arial;}}\n\\pard\\f0\\fs22\n";
+    entries.forEach(e => {
+      const stmt = `${escapeRtf(e.subject)} ${escapeRtf(e.predicate)} ${escapeRtf(e.object)}`;
+      const src = escapeRtf(e.source);
+      r += "{\\pntext\\f0 \\bullet\\tab}{\\*\\pn\\pnlvlblt\\pnf0\\pnindent0{\\pntxtb \\bullet}}\\fi-360\\li720\n";
+      if(citeMode === 'footnote'){
+        r += `${stmt}{\\super\\chftn}{\\footnote\\pard\\plain\\fs20 {\\super\\chftn} ${src}\\par}\\par\n`;
+      } else if(citeMode === 'inline'){
+        r += `${stmt} (${src})\\par\n`;
+      } else {
+        r += `${stmt}\\par\n`;
+      }
+    });
+    r += "}";
+    return r;
+  }
+
+  // ─── Parse Button ─────────────────────────────────────────────────────────
+  parseBtn.addEventListener('click', ()=>{
+    const raw = pasteEl.value.trim();
+    if(!raw){ showToast('Nothing pasted. Paste a TronScan block first.', true); return; }
+
+    const p = parseTronScanOwnerBlock(raw);
+    parsed = p;
+
+    if(!p.subject){
+      showToast('Current Account address not found. Ensure the block includes a "(Current Account)" marker.', true);
+      renderInputPreview();
+      return;
+    }
+
+    renderInputPreview();
+
+    // Sole-owner: no co-signers
+    if(p.objects.length === 0){
+      // Check if already in addressMeta
+      if(addressMeta[p.subject]){
+        showToast(`Address already researched. Clear clipboard to re-research.`, false);
+        return;
+      }
+      // Show activation prompt
+      pendingParsed = p;
+      activationAddr.textContent = p.subject;
+      activationPrompt.classList.add('show');
+      parseBtn.disabled = true;
+      pasteEl.value = '';
+      parsed = { subject:null, threshold:null, objects:[] };
+      renderInputPreview();
+      return;
+    }
+
+    // Multisig
+    const { added, skipped } = commitMultiSig(p);
+
+    pasteEl.value = '';
+    parsed = { subject:null, threshold:null, objects:[] };
+
+    saveClipboard();
+    renderInputPreview();
+    renderOutput();
+
+    if(added === 0 && skipped > 0){
+      showToast(`All ${skipped} relationship${skipped===1?'':'s'} already in clipboard — nothing added.`);
+    } else if(skipped > 0){
+      showToast(`Added ${added}, skipped ${skipped} duplicate${skipped===1?'':'s'}.`);
+    } else {
+      showToast(`Added ${added} co-signer relationship${added===1?'':'s'}.`);
+    }
+  });
+
+  // ─── Activation Prompt Buttons ────────────────────────────────────────────
+  activationYes.addEventListener('click', ()=> commitSoleOwner(true));
+  activationNo.addEventListener('click', ()=> commitSoleOwner(false));
+
+  // ─── Undo ─────────────────────────────────────────────────────────────────
+  undoBtn.addEventListener('click', ()=>{
+    if(batches.length === 0) return;
+    const batch = batches.pop();
+    const entryCount = typeof batch === 'number' ? batch : (batch.entryCount || 0);
+    const metaKeys = typeof batch === 'object' ? (batch.metaKeys || []) : [];
+
+    if(entryCount > 0) entries.splice(entries.length - entryCount, entryCount);
+    metaKeys.forEach(k => delete addressMeta[k]);
+
+    saveClipboard();
+    renderOutput();
+    const parts = [];
+    if(entryCount > 0) parts.push(`${entryCount} co-signer relationship${entryCount===1?'':'s'}`);
+    if(metaKeys.length > 0) parts.push(`${metaKeys.length} address record${metaKeys.length===1?'':'s'}`);
+    showToast(`Undid last add (${parts.join(' and ')} removed).`);
+  });
+
+  // ─── Clear ────────────────────────────────────────────────────────────────
+  clearBtn.addEventListener('click', ()=>{
+    pasteEl.value = '';
+    parsed = { subject:null, threshold:null, objects:[] };
+    entries = [];
+    addressMeta = {};
+    batches = [];
+    pendingParsed = null;
+    activationPrompt.classList.remove('show');
+    parseBtn.disabled = false;
+    saveClipboard();
+    renderInputPreview();
+    renderOutput();
+    showToast('Clipboard cleared.');
+  });
+
+  // ─── Toggle Handlers ──────────────────────────────────────────────────────
+  inputToggle.addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    inputMode = btn.getAttribute('data-mode');
+    inputToggle.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderInputPreview();
+  });
+
+  viewToggle.addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    viewMode = btn.getAttribute('data-view');
+    viewToggle.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderOutput();
+  });
+
+  citeToggle.addEventListener('click', e=>{
+    const btn = e.target.closest('button'); if(!btn) return;
+    citeMode = btn.getAttribute('data-mode');
+    citeToggle.querySelectorAll('button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    renderOutput();
+  });
+
+  // ─── Copy / Downloads ─────────────────────────────────────────────────────
+  copyBtn.addEventListener('click', ()=>{
+    let text = '';
+
+    if(viewMode === 'narrative'){
+      text = narrativeToText();
+    } else if(viewMode === 'statements'){
+      if(!entries.length){ showToast('No statements to copy.', true); return; }
+      if(citeMode === 'footnote'){
+        text = entries.map((e,i)=>`• ${e.subject} ${e.predicate} ${e.object} [${i+1}]`).join('\n')
+             + '\n\n'
+             + entries.map((e,i)=>`${i+1}. ${e.source}`).join('\n');
+      } else if(citeMode === 'inline'){
+        text = entries.map(e=>`• ${e.subject} ${e.predicate} ${e.object} (${e.source})`).join('\n');
+      } else {
+        text = entries.map(e=>`• ${e.subject} ${e.predicate} ${e.object}`).join('\n');
+      }
+    } else if(viewMode === 'leads'){
+      const leads = computeSets().leads;
+      if(!leads.length){ showToast('No leads to copy.', true); return; }
+      text = leads.join('\n');
+    } else {
+      showToast('Switch to Statements, Narrative, or Leads view to copy.', true);
+      return;
+    }
+
+    if(!text){ showToast('Nothing to copy.', true); return; }
+    navigator.clipboard.writeText(text)
+      .then(()=>showToast('Copied to clipboard.'))
+      .catch(()=>showToast('Copy failed — try Download instead.', true));
+  });
+
+  rtfBtn.addEventListener('click', ()=>{
+    if(!entries.length || viewMode !== 'statements'){ showToast('Switch to Statements view to download RTF.', true); return; }
+    downloadFile(generateRTF(), 'tron-address-statements.rtf', 'application/rtf');
+    showToast('RTF downloaded.');
+  });
+
+  csvSingleBtn.addEventListener('click', ()=>{
+    if(!entries.length){ showToast('No relationships to export.', true); return; }
+    const header = 'Subject,Relationship,Object,Weight,Threshold,Source';
+    const rows = entries.map(e=>[
+      escCSV(e.subject),
+      escCSV(e.predicate),
+      escCSV(e.object),
+      escCSV(e.weight != null ? e.weight : ''),
+      escCSV(e.threshold != null ? e.threshold : ''),
+      escCSV(e.source)
+    ].join(','));
+    downloadFile([header,...rows].join('\n'), 'tron-address-relationships.csv', 'text/csv');
+    showToast('CSV downloaded.');
+  });
+
+  csvNodeEdgeBtn.addEventListener('click', ()=>{
+    if(!entries.length){ showToast('No relationships to export.', true); return; }
+    const nodeMap = new Map(); let id=1;
+    function idFor(label){ if(!nodeMap.has(label)) nodeMap.set(label,id++); return nodeMap.get(label); }
+    entries.forEach(e=>{ idFor(e.subject); idFor(e.object); });
+    const nodes = ['NodeID,Label,IsMultiSig,IsActivated'];
+    nodeMap.forEach((nid,label)=>{
+      const m = addressMeta[label];
+      nodes.push(`${nid},${escCSV(label)},${m?String(m.isMultiSig):''},${m?String(m.isActivated):''}`);
+    });
+    const edges = ['SourceNodeID,TargetNodeID,Relationship,Weight,Threshold'];
+    entries.forEach(e=>{
+      edges.push(`${idFor(e.subject)},${idFor(e.object)},${escCSV(e.predicate)},${e.weight!=null?e.weight:''},${e.threshold!=null?e.threshold:''}`);
+    });
+    const content = ['--- Nodes ---',...nodes,'','--- Edges ---',...edges].join('\n');
+    downloadFile(content, 'tron-address-nodeedge.csv', 'text/csv');
+    showToast('Node/Edge CSV downloaded.');
+  });
+
+  provBtn.addEventListener('click', ()=>{
+    if(!entries.length){ showToast('No relationships to export.', true); return; }
+    const prov = {
+      "@context": { prov:"http://www.w3.org/ns/prov#", rdfs:"http://www.w3.org/2000/01/rdf-schema#" },
+      "@graph": entries.map((e,i)=>({
+        "@id": `_:stmt${i+1}`,
+        "@type": "prov:Entity",
+        "rdfs:label": `${e.subject} ${e.predicate} ${e.object}`,
+        "prov:wasDerivedFrom": { "@id":`_:src${i+1}`, "@type":"prov:Entity", "rdfs:label":e.source }
+      }))
+    };
+    downloadFile(JSON.stringify(prov,null,2), 'tron-address-ownership.jsonld', 'application/ld+json');
+    showToast('JSON‑LD downloaded.');
+  });
+
+  walletsCsvBtn.addEventListener('click', ()=>{
+    const sets = computeSets();
+    if(!sets.all.length){ showToast('No addresses to export.', true); return; }
+    const header = 'Address,IsMultiSig,IsActivated,Role';
+    const rows = sets.all.map(addr=>{
+      const m = addressMeta[addr];
+      const isSubject = !!m;
+      const isObject = entries.some(e=>e.object===addr);
+      const role = isSubject && isObject ? 'both' : isSubject ? 'subject' : 'co-signer';
+      return [
+        escCSV(addr),
+        m ? String(m.isMultiSig) : '',
+        m ? String(m.isActivated) : '',
+        escCSV(role)
+      ].join(',');
+    });
+    downloadFile([header,...rows].join('\n'), 'tron-addresses-deduped.csv', 'text/csv');
+    showToast('All addresses CSV downloaded.');
+  });
+
+  leadsCsvBtn.addEventListener('click', ()=>{
+    const sets = computeSets();
+    if(!sets.leads.length){ showToast('No leads to export.', true); return; }
+    const header = 'LeadAddress';
+    const rows = sets.leads.map(w=>escCSV(w));
+    downloadFile([header,...rows].join('\n'), 'tron-leads-deduped.csv', 'text/csv');
+    showToast('Leads CSV downloaded.');
+  });
+
+  // ─── Init ─────────────────────────────────────────────────────────────────
+  loadClipboard();
+  renderInputPreview();
+  renderOutput();
+  renderClipboardMeta();
+</script>
+</body>
+</html>
